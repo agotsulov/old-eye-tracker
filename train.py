@@ -43,8 +43,8 @@ class Dataset(torch.utils.data.Dataset):
 
             face = shape
 
-        x = int(curr.split('_')[2]) / 1920
-        y = int(curr[:-4:].split('_')[4]) / 1080
+        x = int(curr.split('_')[2])
+        y = int(curr[:-4:].split('_')[4])
 
         # Иногда проскакивают картиники на которых dlib не может найти лицо второй раз
         print(curr)
