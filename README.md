@@ -1,3 +1,3 @@
-Зарпускать python start.py
+Зарпускать python3 start.py
 
-pip install pygame если не работает
+Зависимости в requirements.txt

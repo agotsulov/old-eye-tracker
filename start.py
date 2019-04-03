@@ -10,29 +10,36 @@ import cv2
 import numpy as np
 import imutils
 import json
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torchvision import transforms
+import train
+
 
 pygame.init()
 
 camera_port = 0
 camera = cv2.VideoCapture(camera_port)
 
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 pretrained_face_landmark = "shape_predictor_68_face_landmarks.dat"
 # http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(pretrained_face_landmark)
 
-inst = pygame.image.load('instruction.jpg')
+inst = pygame.image.load('inst.png')
 
 infoObject = pygame.display.Info()
 print(infoObject)
 screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+screen = pygame.display.set_mode((0, 0))
 # Костыли так как фуллскрине нельзя alt+tab ,но и открыть окно на весь экрано просто нельзя там рамка(
 time.sleep(0.1)  
 
 max_w, max_h = pygame.display.get_surface().get_size()
 
-isFullscreen = True
-i = 0
 quit = False
 dir = "data"
 last_image = ''
@@ -40,18 +47,18 @@ last_image = ''
 x = random.randint(0, max_w)  # infoObject.current_w
 y = random.randint(0, max_h)  # infoObject.current_h
 
-needW = 200
-needH = 100
+model_file = os.path.exists('./model.ckpt')
+if model_file:
+    model = train.ConvNet(2).to(device)
+    model.load_state_dict(torch.load('./model.ckpt'))
+    model.eval()
 
 if not os.path.exists(dir):
     os.makedirs(dir)
 
-eyes = None
-shape = None
+model = None
 
 while not quit:
-    time.sleep(1 / 30)
-
     eyes = None
     shape = None
 
@@ -85,6 +92,19 @@ while not quit:
 
         screen.blit(eyes_frame, (0, frame.shape[0]))
 
+    if eyes is not None and model is not None:
+        eyes = eyes.reshape((1, 3, 64, 32))
+
+        eyes_torch = torch.from_numpy(eyes).float().to(device)
+        out = model(eyes_torch)
+
+        out = out.cpu().data.numpy()[0]
+
+        x_pred = out[0]
+        y_pred = out[1]
+
+        pygame.draw.circle(screen, (0, 255, 0), (x_pred, y_pred), 12)
+
     pygame.display.flip()
 
     events = pygame.event.get()
@@ -100,6 +120,9 @@ while not quit:
             if event.key == pygame.K_z:
                 if os.path.exists(last_image):
                     os.remove(last_image)
+            if event.key == pygame.K_t:
+                model = train.train_model()
+                model.eval()
         if event.type == pygame.QUIT:
             quit = True
 

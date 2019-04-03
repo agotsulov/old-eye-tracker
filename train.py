@@ -11,59 +11,83 @@ import numpy as np
 import os
 from scipy import misc
 
+
 class Dataset(torch.utils.data.Dataset):
     def __init__(self):
         self.len = len(os.listdir('data'))
-        self.pretrained_face_landmark = "shape_predictor_68_face_landmarks.dat"
-        self.detector = dlib.get_frontal_face_detector()
-        self.predictor = dlib.shape_predictor(self.pretrained_face_landmark)
+        print(self.len)
+        detector = dlib.get_frontal_face_detector()
+        predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
+
+        self.eyes = np.ndarray((self.len, 3, 64, 32))
+        self.face = np.ndarray((self.len, 68, 2))
+        self.x = [0 for i in range(self.len)]
+        self.y = [0 for i in range(self.len)]
+
+        names = os.listdir('data')
+        for index in range(self.len):
+            curr = names[index]
+            frame = misc.imread('data/' + curr)
+
+            rects = detector(frame, 0)
+
+            eyes_ = None
+
+            if rects is None:
+                self.len -= 1
+                continue
+
+            for (i, rect) in enumerate(rects):
+                shape = predictor(frame, rect)
+                shape = face_utils.shape_to_np(shape)
+
+                (x_, y_, w_, h_) = cv2.boundingRect(np.array([shape[36:48]]))
+                eyes_ = frame[y_ - 10:y_ + h_ + 10, x_ - 10:x_ + w_ + 10]
+
+                eyes_ = cv2.resize(eyes_, (64, 32))
+
+                self.face[index] = shape
+
+
+            self.x[index] = int(curr.split('_')[2])
+            self.y[index] = int(curr[:-4:].split('_')[4])
+
+            self.eyes[index] = eyes_.reshape((3, 64, 32))
 
     def __len__(self):
         return self.len
 
     def __getitem__(self, index):
-        names = os.listdir('data')
-        curr = names[index]
-
-        frame = misc.imread('data/' + curr)
-
-        rects = self.detector(frame, 0)
-
-        eyes = None
-        face = None
-
-        for (i, rect) in enumerate(rects):
-            shape = self.predictor(frame, rect)
-            shape = face_utils.shape_to_np(shape)
-
-            (x_, y_, w_, h_) = cv2.boundingRect(np.array([shape[36:48]]))
-            eyes = frame[y_ - 10:y_ + h_ + 10, x_ - 10:x_ + w_ + 10]
-
-            eyes = cv2.resize(eyes, (64, 32))
-
-            face = shape
-
-        x = int(curr.split('_')[2])
-        y = int(curr[:-4:].split('_')[4])
-
-        # Иногда проскакивают картиники на которых dlib не может найти лицо второй раз
-        print(curr)
-        print(type(eyes))
-        print(type(face))
-        print(eyes.shape)
-
-        return torch.from_numpy(eyes), torch.from_numpy(face), torch.from_numpy(np.array([x, y]))
+        return torch.from_numpy(self.eyes[index]).float(),\
+               torch.from_numpy(self.face[index]).float(),\
+               torch.from_numpy(np.array([self.x[index], self.y[index]])).float()
 
 
+class ConvNet(nn.Module):
+    def __init__(self, num_classes=2):
+        super(ConvNet, self).__init__()
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
+        self.maxpool1 = nn.MaxPool2d(2)
+        self.fc = nn.Linear(32 * 16 * 64, num_classes)
 
+    def forward(self, e):
+        out = F.relu(self.conv1(e))
+        out = self.maxpool1(out)
+        out = out.reshape(out.size(0), -1)
+        #f = f.reshape(f.size(0), -1)
+        # out = torch.cat((out, f), 1)
+        out = self.fc(out)
+        return out
 
 # Device configuration
+
+
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # Hyper parameters
-num_epochs = 5
-num_classes = 10
-batch_size = 100
+num_epochs = 10
+num_classes = 2
+batch_size = 10
 learning_rate = 0.001
 '''
 # MNIST dataset
@@ -86,68 +110,44 @@ test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
                                           shuffle=False)
 '''
 
-train_dataset = Dataset()
 
-train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                           batch_size=batch_size,
-                                           shuffle=True)
+def train_model():
+    train_dataset = Dataset()
 
-class Flatten(nn.Module):
-    def forward(self, x):
-        return x.reshape(x.size(0), -1)
+    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
+                                               batch_size=batch_size,
+                                               shuffle=True)
 
+    model = ConvNet(num_classes).to(device)
 
-class ConvNet(nn.Module):
-    def __init__(self, num_classes=2):
-        super(ConvNet, self).__init__()
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
-        self.maxpool1 = nn.MaxPool2d(2)
-        self.fc = nn.Linear(32 * 16 * 64 + 68 * 2, num_classes)
+    # Loss and optimizer
+    criterion = torch.nn.MSELoss(reduction='sum')
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    def forward(self, e, f):
-        print("FORWARD")
-        print(e)
-        print(f)
-        print(e.size())
-        print(f.size())
-        out = F.relu(self.conv1(e))
-        out = self.maxpool1(out)
-        out = out.reshape(out.size(0), -1)
-        f = f.reshape(f.size(0), -1)
-        out = torch.cat(out, f)
-        out = self.fc(out)
-        return out
+    # Train the model
+    total_step = len(train_loader)
+    for epoch in range(num_epochs):
+        for i, (eyes, face, pos) in enumerate(train_loader):
+            eyes = eyes.to(device)
+            face = face.to(device)
+            pos = pos.to(device)
 
+            # Forward pass
+            outputs = model(eyes)
+            loss = criterion(outputs, pos)
 
-model = ConvNet(num_classes).to(device)
+            # Backward and optimize
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-# Loss and optimizer
-criterion = torch.nn.MSELoss(reduction='sum')
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+            if (i + 1) % 10 == 0:
+                print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
+                      .format(epoch + 1, num_epochs, i + 1, total_step, loss.item()))
 
-# Train the model
-total_step = len(train_loader)
-for epoch in range(num_epochs):
-    for i, (eyes, face, pos) in enumerate(train_loader):
-        eyes = eyes.to(device)
-        face = face.to(device)
-        pos = pos.to(device)
+    torch.save(model.state_dict(), './model.ckpt')
 
-        # Forward pass
-        outputs = model(eyes, face)
-        loss = criterion(outputs, pos)
-
-        # Backward and optimize
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        if (i + 1) % 100 == 0:
-            print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
-                  .format(epoch + 1, num_epochs, i + 1, total_step, loss.item()))
-
-torch.save(model.state_dict(), 'model.ckpt')
-
+    return model
 '''
 # Test the model
 model.eval()  # eval mode (batchnorm uses moving mean/variance instead of mini-batch mean/variance)
@@ -165,4 +165,3 @@ with torch.no_grad():
     print('Test Accuracy of the model on the 10000 test images: {} %'.format(100 * correct / total))
 '''
 # Save the model checkpoint
-torch.save(model.state_dict(), 'model.ckpt')
