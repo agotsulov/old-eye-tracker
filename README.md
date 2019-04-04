@@ -1,3 +1,3 @@
-Зарпускать python3 start.py
+Запускать python3 start.py
 
 Зависимости в requirements.txt

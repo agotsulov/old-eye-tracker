@@ -48,7 +48,6 @@ class Dataset(torch.utils.data.Dataset):
 
                 self.face[index] = shape
 
-
             self.x[index] = int(curr.split('_')[2])
             self.y[index] = int(curr[:-4:].split('_')[4])
 
@@ -92,6 +91,7 @@ class ConvNet(nn.Module):
         out = torch.cat((out, f), 1)
         out = self.fc(out)
         return out
+
 
 # Device configuration
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -158,7 +158,7 @@ def train_model():
                 print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
                       .format(epoch + 1, num_epochs, i + 1, total_step, loss.item()))
 
-    torch.save(model.state_dict(), './model.ckpt')
+    torch.save(model.state_dict(), './model.pth')
 
     return model
 

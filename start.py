@@ -34,11 +34,13 @@ inst = pygame.image.load('inst.png')
 infoObject = pygame.display.Info()
 print(infoObject)
 #screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-screen = pygame.display.set_mode((0, 960))
+screen = pygame.display.set_mode((infoObject.current_w, infoObject.current_h))
 # Костыли так как фуллскрине нельзя alt+tab ,но и открыть окно на весь экрано просто нельзя там рамка(
 time.sleep(0.1)  
 
 max_w, max_h = pygame.display.get_surface().get_size()
+
+isFullscreen = False
 
 quit = False
 dir = "data"
@@ -47,18 +49,26 @@ last_image = ''
 x = random.randint(0, max_w)  # infoObject.current_w
 y = random.randint(0, max_h)  # infoObject.current_h
 
-model_file = os.path.exists('./model.ckpt')
+model = None
+
+model_file = os.path.exists('./model.pth')
 if model_file:
+    print("FOUND MODEL")
     model = train.ConvNet(2).to(device)
-    model.load_state_dict(torch.load('./model.ckpt'))
+    model.load_state_dict(torch.load('./model.pth'))
     model.eval()
+else:
+    print("MODEL NOT FOUND")
+
 
 if not os.path.exists(dir):
     os.makedirs(dir)
 
-model = None
 
 while not quit:
+
+    time.sleep(1 / 30)
+
     eyes = None
     shape = None
 
@@ -135,6 +145,13 @@ while not quit:
             if event.key == pygame.K_t:
                 model = train.train_model()
                 model.eval()
+            if event.key == pygame.K_f:
+                if isFullscreen:
+                    screen = pygame.display.set_mode((infoObject.current_w, infoObject.current_h))
+                    isFullscreen = False
+                else:
+                    screen = pygame.display.set_mode((infoObject.current_w, infoObject.current_h), pygame.FULLSCREEN)
+                    isFullscreen = True
         if event.type == pygame.QUIT:
             quit = True
 
