@@ -23,7 +23,7 @@ class Dataset(torch.utils.data.Dataset):
         self.face = np.ndarray((self.len, 68, 2))
         self.x = [0 for i in range(self.len)]
         self.y = [0 for i in range(self.len)]
-
+        print("LOADING DATA...")
         names = os.listdir('data')
         for index in range(self.len):
             curr = names[index]
@@ -66,28 +66,40 @@ class Dataset(torch.utils.data.Dataset):
 class ConvNet(nn.Module):
     def __init__(self, num_classes=2):
         super(ConvNet, self).__init__()
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=5, padding=2)
         self.maxpool1 = nn.MaxPool2d(2)
-        self.fc = nn.Linear(32 * 16 * 64, num_classes)
+        self.dropout1 = nn.Dropout2d(0.2)
+        self.conv2 = nn.Conv2d(64, 256, kernel_size=3, padding=1)
+        self.maxpool2 = nn.MaxPool2d(2)
+        self.dropout2 = nn.Dropout2d(0.2)
+        self.conv3 = nn.Conv2d(256, 1024, kernel_size=3, padding=1)
+        self.maxpool3 = nn.MaxPool2d(2)
+        self.dropout3 = nn.Dropout2d(0.2)
+        self.fc = nn.Linear(1024 * 8 * 4 + 68 * 2, num_classes)
 
-    def forward(self, e):
+    def forward(self, e, f):
         out = F.relu(self.conv1(e))
         out = self.maxpool1(out)
+        out = self.dropout1(out)
+        out = F.relu(self.conv2(out))
+        out = self.maxpool2(out)
+        out = self.dropout2(out)
+        out = F.relu(self.conv3(out))
+        out = self.maxpool3(out)
+        out = self.dropout3(out)
         out = out.reshape(out.size(0), -1)
-        #f = f.reshape(f.size(0), -1)
-        # out = torch.cat((out, f), 1)
+        f = f.reshape(f.size(0), -1)
+        out = torch.cat((out, f), 1)
         out = self.fc(out)
         return out
 
 # Device configuration
-
-
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # Hyper parameters
-num_epochs = 10
+num_epochs = 30
 num_classes = 2
-batch_size = 10
+batch_size = 50
 learning_rate = 0.001
 '''
 # MNIST dataset
@@ -124,6 +136,7 @@ def train_model():
     criterion = torch.nn.MSELoss(reduction='sum')
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
+    print("TRAIN...")
     # Train the model
     total_step = len(train_loader)
     for epoch in range(num_epochs):
@@ -133,7 +146,7 @@ def train_model():
             pos = pos.to(device)
 
             # Forward pass
-            outputs = model(eyes)
+            outputs = model(eyes, face)
             loss = criterion(outputs, pos)
 
             # Backward and optimize
@@ -148,6 +161,7 @@ def train_model():
     torch.save(model.state_dict(), './model.ckpt')
 
     return model
+
 '''
 # Test the model
 model.eval()  # eval mode (batchnorm uses moving mean/variance instead of mini-batch mean/variance)

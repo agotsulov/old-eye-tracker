@@ -33,8 +33,8 @@ inst = pygame.image.load('inst.png')
 
 infoObject = pygame.display.Info()
 print(infoObject)
-screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-screen = pygame.display.set_mode((0, 0))
+#screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+screen = pygame.display.set_mode((0, 960))
 # Костыли так как фуллскрине нельзя alt+tab ,но и открыть окно на весь экрано просто нельзя там рамка(
 time.sleep(0.1)  
 
@@ -72,8 +72,6 @@ while not quit:
     screen.blit(img, (0, 0))
     screen.blit(inst, (600, 0))
 
-    pygame.draw.circle(screen, (255, 0, 0), (x, y), 8)
-
     rects = detector(frame, 0)
 
     for (i, rect) in enumerate(rects):
@@ -82,28 +80,42 @@ while not quit:
 
         for (x_, y_) in shape:  # 36 42 43 48
             pygame.draw.circle(screen, (0, 255, 0), (x_, y_), 2)
-
+        
         (x_, y_, w_, h_) = cv2.boundingRect(np.array([shape[36:48]]))
         eyes = frame[y_ - 10:y_ + h_ + 10, x_ - 10:x_ + w_ + 10]
+        
+        if eyes is not None:
+            eyes = cv2.resize(eyes, (64, 32))
 
-        eyes = cv2.resize(eyes, (64, 32))
+            eyes_frame = pygame.image.frombuffer(eyes.tostring(), (eyes.shape[1], eyes.shape[0]), "RGB")
 
-        eyes_frame = pygame.image.frombuffer(eyes.tostring(), (eyes.shape[1], eyes.shape[0]), "RGB")
-
-        screen.blit(eyes_frame, (0, frame.shape[0]))
+            screen.blit(eyes_frame, (0, frame.shape[0]))
 
     if eyes is not None and model is not None:
         eyes = eyes.reshape((1, 3, 64, 32))
+        shape = shape.reshape((1, 68, 2))
 
         eyes_torch = torch.from_numpy(eyes).float().to(device)
-        out = model(eyes_torch)
+        shape_torch = torch.from_numpy(shape).float().to(device)
+        out = model(eyes_torch, shape_torch)
 
         out = out.cpu().data.numpy()[0]
 
         x_pred = out[0]
         y_pred = out[1]
 
+        if x_pred < 0:
+            x_pred = 0
+        if y_pred < 0:
+            y_pred = 0
+        if x_pred > max_w:
+            x_pred = max_w
+        if y_pred > max_h:
+            y_pred = max_h
+            
         pygame.draw.circle(screen, (0, 255, 0), (x_pred, y_pred), 12)
+
+    pygame.draw.circle(screen, (255, 0, 0), (x, y), 8)
 
     pygame.display.flip()
 
@@ -115,8 +127,8 @@ while not quit:
             if event.key == pygame.K_SPACE and eyes is not None:
                 last_image = dir + "/{}_x_{}_y_{}.jpg".format(int(time.time()), x, y)
                 pygame.image.save(img, last_image)
-                x = random.randint(0, max_w)
-                y = random.randint(0, max_h)
+                x = random.randint(8, max_w - 8)
+                y = random.randint(8, max_h - 8)
             if event.key == pygame.K_z:
                 if os.path.exists(last_image):
                     os.remove(last_image)
