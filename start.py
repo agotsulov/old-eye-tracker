@@ -34,7 +34,7 @@ inst = pygame.image.load('inst.png')
 infoObject = pygame.display.Info()
 print(infoObject)
 #screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-screen = pygame.display.set_mode((infoObject.current_w, infoObject.current_h))
+screen = pygame.display.set_mode((infoObject.current_w, infoObject.current_h - 200))
 # Костыли так как фуллскрине нельзя alt+tab ,но и открыть окно на весь экрано просто нельзя там рамка(
 time.sleep(0.1)  
 
